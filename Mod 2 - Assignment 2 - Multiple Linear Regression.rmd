@@ -1,0 +1,134 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r}
+library(tidyverse) #tidyverse set of packages and functions
+library(tidymodels)
+library(glmnet) #for Lasso, ridge, and elastic net models 
+library(GGally) #create ggcorr and ggpairs plots
+library(ggcorrplot) #create an alternative to ggcorr plots
+library(MASS) #access to forward and backward selection algorithms
+library(leaps) #best subset selection
+library(lmtest) #for the dw test
+library(splines) #for nonlinear fitting
+library(car) #for calculating the variance inflation factor
+library(lubridate)
+```
+
+```{r}
+library(readr)
+bike <- read_csv("bike_cleaned-3.csv")
+bike = bike %>% mutate(dteday = mdy(dteday))
+#Note that mdy is a lubridate package function
+#You can read more about lubridate here: https://lubridate.tidyverse.org/
+```
+```{r}
+bike = bike %>% mutate_if(is.character, as_factor)
+bike = bike %>% mutate(hr = as_factor(hr))
+ggcorr(bike,label = TRUE,label_round = 4)
+
+```
+```{r}
+ggplot(bike,aes(x=hr,y=count)) + geom_boxplot() + geom_jitter(alpha = 0.15) + theme_bw()
+
+```
+```{r}
+str(bike)
+```
+```{r}
+ggplot(bike,aes(x=season,y=count)) + geom_boxplot() + geom_jitter(alpha = 0.15) + theme_bw()
+
+```
+```{r}
+bike %>% group_by(season) %>% summarize(freq = n()) %>% arrange(desc(freq))
+
+```
+
+```{r}
+# Define the recipe
+bike_recipe = recipe(count ~ hr, bike)
+bike_recipe = step_dummy(bike_recipe, all_nominal())
+
+# Define the model
+lm_model = linear_reg()
+lm_model = set_engine(lm_model, "lm")
+
+# Initiate the workflow
+lm_wflow = workflow()
+
+# Add the model to the workflow
+lm_wflow = add_model(lm_wflow, lm_model)
+
+# Add the recipe to the workflow
+lm_wflow = add_recipe(lm_wflow, bike_recipe)
+
+# Fit the model
+lm_fit = fit(lm_wflow, bike)
+
+summary(lm_fit$fit$fit$fit)
+
+
+```
+
+```{r}
+# Define the recipe
+bike_recipe = recipe(count ~ hr + temp, bike)
+bike_recipe = step_dummy(bike_recipe, all_nominal())
+
+# Define the model
+lm_model = linear_reg()
+lm_model = set_engine(lm_model, "lm")
+
+# Initiate the workflow
+lm_wflow = workflow()
+
+# Add the model to the workflow
+lm_wflow = add_model(lm_wflow, lm_model)
+
+# Add the recipe to the workflow
+lm_wflow = add_recipe(lm_wflow, bike_recipe)
+
+# Fit the model
+lm_fit = fit(lm_wflow, bike)
+
+summary(lm_fit$fit$fit$fit)
+
+```
+```{r}
+# Define the recipe
+bike_recipe = recipe(count ~ atemp + temp, bike)
+
+# Define the model
+lm_model = linear_reg()
+lm_model = set_engine(lm_model, "lm")
+
+# Initiate the workflow
+lm_wflow = workflow()
+
+# Add the model to the workflow
+lm_wflow = add_model(lm_wflow, lm_model)
+
+# Add the recipe to the workflow
+lm_wflow = add_recipe(lm_wflow, bike_recipe)
+
+# Fit the model
+lm_fit = fit(lm_wflow, bike)
+
+summary(lm_fit$fit$fit$fit)
+```
+
+```{r}
+allmod = lm(count ~. -instant -registered -casual, data = bike) 
+summary(allmod)
+```
+
+```{r}
+#backward
+backmod = stepAIC(allmod, direction = "backward", trace = TRUE) #trace = TRUE shows how the model is built (which variables are removed)
+summary(backmod)
+```
+

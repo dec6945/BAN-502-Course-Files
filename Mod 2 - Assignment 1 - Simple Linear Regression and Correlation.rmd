@@ -1,0 +1,139 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(GGally)
+library(lmtest)
+```
+
+```{r}
+air <- airquality
+```
+
+```{r}
+str(air)
+summary(air)
+```
+
+```{r}
+air2 <- drop_na(air)
+str(air2)
+```
+
+```{r}
+ggpairs(air2)
+```
+```{r}
+ggcorr(air2,label=TRUE)
+```
+
+Build model
+
+```{r}
+lin_reg = recipe(Ozone ~ Temp, air2)
+
+# Define the model
+lm_model = linear_reg() 
+lm_model = set_engine(lm_model, "lm") 
+
+# Initiate the workflow
+lm_wflow = workflow()
+
+# Add the model to the workflow
+lm_wflow = add_model(lm_wflow, lm_model)
+
+# Add the recipe to the workflow
+lm_wflow = add_recipe(lm_wflow, lin_reg)
+
+# Fit the model
+lm_fit = fit(lm_wflow, air2)
+
+summary(lm_fit$fit$fit$fit)
+
+```
+
+Examine prediction interval
+
+```{r}
+#Prediction interval
+temp_var = predict(lm_fit$fit$fit$fit, interval = "prediction") #accessing the fit object with the three $fit
+new_df = cbind(air2, temp_var)
+
+ggplot(new_df, aes(x = Temp, y = Ozone)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  geom_line(aes(y=lwr), color = "red", linetype = "dashed") +
+  geom_line(aes(y=upr), color = "red", linetype = "dashed") +
+  theme_bw() 
+```
+Get lower and upper bound of slope at 95% confidence interval
+
+```{r}
+# Assuming lm_fit is your fitted model object
+
+# Load the required library
+library(broom)
+
+# Extract the model object from the workflow fit
+lm_model_fit = lm_fit$fit$fit$fit
+
+# Obtain a tidy summary of your model
+tidy_summary <- tidy(lm_model_fit)
+
+# Print the tidy summary
+print(tidy_summary)
+
+# To get the confidence interval for the slope you can do:
+confint(lm_model_fit, 'Temp', level = 0.95)
+
+```
+Predict Y with X
+
+```{r}
+#Using predict function
+predict_values = data.frame(Temp = c(80))
+predict(lm_fit, new_data = predict_values)
+```
+Diagnostics
+
+Examine scatterplot to test Assumption 1:
+
+**Assumption 1:** The predictor and response variable have a linear relationship  
+
+```{r}
+ggplot(air2, aes(x=Temp,y=Ozone)) + geom_point() + 
+  geom_smooth(method="lm",se=FALSE, color="red") + theme_bw()
+```
+
+Perform Durbin-Watson test to test independence of residuals for Assumption 2:
+
+**Assumption 2:** Model errors (residuals) are independent  
+
+```{r}
+dwtest(lm_fit$fit$fit$fit)
+```
+We fail to reject the null hypothesis with a p-value greater than 0.05. This suggests that the residuals are likely independent.  
+
+Examine a plot of residual to test Assumption 3:
+
+**Assumption 3:** Model residuals exhibit constant variance  
+
+```{r}
+air2 = mutate(air2, resid1 = lm_fit$fit$fit$fit$residuals)
+ggplot(air2,aes(x=Temp,y=resid1)) + geom_point() + theme_bw()
+```
+Looks good, no clustering
+
+Finally we examine a histogram of residuals to check Assumption 4:
+
+**Assumption 4:** Model residuals are Normally-distributed  
+
+```{r}
+ggplot(air2,aes(x=resid1)) + geom_histogram() + theme_bw()
+```
+
+Kind of, I see a right skew though.
