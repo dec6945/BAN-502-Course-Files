@@ -1,0 +1,64 @@
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(lubridate)
+```
+
+```{r}
+library(readr)
+bike <- read_csv("bike_cleaned-4.csv")
+bike = bike %>% mutate(dteday = mdy(dteday))
+bike = bike %>% mutate_if(is.character, as_factor)
+bike = bike %>% mutate(hr = as_factor(hr))
+```
+
+```{r}
+set.seed(1234) 
+split = initial_split(bike, prop = 0.70, strata = count)
+train = training(split)
+test = testing(split)
+```
+
+Next we specify the type of model that we are building.  
+```{r}
+simple = recipe(count ~ season + mnth + hr + holiday + weekday + temp + weathersit, train)
+lm_model = linear_reg() 
+lm_model = set_engine(lm_model, "lm") 
+```
+
+Next we combine the recipe and the model with a workflow.  
+```{r}
+# Initiate the workflow
+lm_wflow = workflow()
+
+# Add the model to the workflow
+lm_wflow = add_model(lm_wflow, lm_model)
+
+# Add the recipe to the workflow
+lm_wflow = add_recipe(lm_wflow, simple)
+```
+
+Next we fit (execute) the workflow on our dataset.  
+```{r}
+lm_fit = fit(lm_wflow, train)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit) #three fits :), the actual fit is embedded deeply in the object
+```
+
+```{r}
+predictions = predict(lm_fit, train)
+head(predictions)
+```
+
+```{r}
+ggplot(predictions, aes(.pred)) +
+  geom_histogram(binwidth = 1)
+
+```
+```{r}
+lm_fit %>% predict(test) %>% bind_cols(test) %>% metrics(truth = count, estimate = .pred)
+
+```
+

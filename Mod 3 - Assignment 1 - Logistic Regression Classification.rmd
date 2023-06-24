@@ -1,0 +1,241 @@
+Libraries  
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(e1071) #often needed for various statistical tasks
+library(ROCR) #for threshold selction
+```
+
+```{r}
+library(readr)
+parole <- read_csv("parole.csv")
+str(parole)
+```
+```{r}
+library(dplyr)
+library(forcats)
+
+parole = mutate(parole, male = as_factor(male))
+parole = mutate(parole, male = fct_recode(male, "Female" = "0", "Male" = "1"))
+
+parole = mutate(parole, race = as_factor(race))
+parole = mutate(parole, race = fct_recode(race, "Other" = "2", "White" = "1"))
+
+parole = mutate(parole, state = as_factor(state))
+parole = mutate(parole, state = fct_recode(state, 
+                                           "Other" = "1", 
+                                           "Kentucky" = "2", 
+                                           "Louisiana" = "3",
+                                           "Virginia" = "4"))
+
+parole = mutate(parole, crime = as_factor(crime))
+parole = mutate(parole, crime = fct_recode(crime, 
+                                           "Other" = "1",
+                                           "Larceny" = "2", 
+                                           "Drug-related" = "3",
+                                           "Driving-related" = "4"))
+
+parole = mutate(parole, multiple.offenses = as_factor(multiple.offenses))
+parole = mutate(parole, multiple.offenses = fct_recode(multiple.offenses, "No" = "0", "Yes" = "1"))
+
+parole = mutate(parole, violator = as_factor(violator))
+parole = mutate(parole, violator = fct_recode(violator, "Completed Parole" = "0", "Violated Parole" = "1"))
+
+```
+
+```{r}
+# Load the dplyr package
+library(dplyr)
+
+# Perform the count
+violator_count = parole %>%
+  filter(violator == "Violated Parole") %>%
+  count()
+
+# Print the count
+print(violator_count)
+
+```
+
+```{r}
+set.seed(12345) 
+parole_split = initial_split(parole, prop = 0.70, strata = violator)
+train = training(parole_split)
+test = testing(parole_split)
+```
+
+```{r}
+levels(train$violator)
+```
+```{r}
+train = train %>% mutate(violator = fct_relevel(violator, c("Completed Parole","Violated Parole")))
+levels(train$violator)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(forcats)
+
+# Bar plot for 'male'
+ggplot(parole, aes(x = male, fill = violator)) + 
+  geom_bar(position = "fill") +
+  labs(title = "Violations by Gender", x = "Gender", y = "Count")
+
+# Bar plot for 'race'
+ggplot(parole, aes(x = race, fill = violator)) + 
+  geom_bar(position = "dodge") +
+  labs(title = "Violations by Race", x = "Race", y = "Count")
+
+# Bar plot for 'state'
+ggplot(parole, aes(x = state, fill = violator)) + 
+  geom_bar(position = "dodge") +
+  labs(title = "Violations by State", x = "State", y = "Count")
+
+# Bar plot for 'crime'
+ggplot(parole, aes(x = crime, fill = violator)) + 
+  geom_bar(position = "dodge") +
+  labs(title = "Violations by Crime", x = "Crime", y = "Count")
+
+# Bar plot for 'multiple.offenses'
+ggplot(parole, aes(x = multiple.offenses, fill = violator)) + 
+  geom_bar(position = "dodge") +
+  labs(title = "Violations by Multiple Offenses", x = "Multiple Offenses", y = "Count")
+
+# Box plot for 'age'
+ggplot(parole, aes(x = violator, y = age, fill = violator)) +
+  geom_boxplot() +
+  labs(title = "Age Distribution by Violation Status", x = "Violation Status", y = "Age")
+
+# Box plot for 'time.served'
+ggplot(parole, aes(x = violator, y = time.served, fill = violator)) +
+  geom_boxplot() +
+  labs(title = "Time Served Distribution by Violation Status", x = "Violation Status", y = "Time Served")
+
+# Box plot for 'max.sentence'
+ggplot(parole, aes(x = violator, y = max.sentence, fill = violator)) +
+  geom_boxplot() +
+  labs(title = "Max Sentence Distribution by Violation Status", x = "Violation Status", y = "Max Sentence")
+
+# Histogram for 'age'
+ggplot(parole, aes(x = age, fill = violator)) +
+  geom_histogram(binwidth = 5) +
+  labs(title = "Age Distribution by Violation Status", x = "Age", y = "Count")
+
+# Histogram for 'time.served'
+ggplot(parole, aes(x = time.served, fill = violator)) +
+  geom_histogram(binwidth = 1) +
+  labs(title = "Time Served Distribution by Violation Status", x = "Time Served", y = "Count")
+
+# Histogram for 'max.sentence'
+ggplot(parole, aes(x = max.sentence, fill = violator)) +
+  geom_histogram(binwidth = 1) +
+  labs(title = "Max Sentence Distribution by Violation Status", x = "Max Sentence", y = "Count")
+
+```
+
+```{r}
+model = 
+  logistic_reg(mode = "classification") %>% #note the use of logistic_reg and mode = "classification"
+  set_engine("glm") #standard logistic regression engine is glm
+
+recipe = recipe(violator ~ state, train)
+
+logreg_wf = workflow() %>%
+  add_recipe(recipe) %>% 
+  add_model(model)
+
+fit = fit(logreg_wf, train)
+```
+
+```{r}
+summary(fit$fit$fit$fit)
+```
+
+```{r}
+model = 
+  logistic_reg(mode = "classification") %>% #note the use of logistic_reg and mode = "classification"
+  set_engine("glm") #standard logistic regression engine is glm
+
+recipe = recipe(violator ~ state + multiple.offenses + race, train)
+
+logreg_wf = workflow() %>%
+  add_recipe(recipe) %>% 
+  add_model(model)
+
+fit = fit(logreg_wf, train)
+```
+
+```{r}
+summary(fit$fit$fit$fit)
+```
+
+```{r}
+newdata = data.frame(state = "Louisiana", multiple.offenses = "Yes", race = "White")
+predict(fit, newdata, type="prob")
+```
+
+Threshold selection  
+```{r}
+predictions = predict(fit, train, type="prob")[2]
+#Change this next line to the names of your predictions and the response variable in the training data frame
+ROCRpred = prediction(predictions, train$violator) 
+
+###You shouldn't need to ever change the next two lines:
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+```{r}
+#Determine threshold to balance sensitivity and specificity
+#DO NOT modify this code
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+Calculate accuracy  - replace credit with training set in other examples
+```{r}
+t1 = table(train$violator,predictions > 0.2015788)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+```{r}
+t1
+```
+
+Sensitivity with cutoff
+```{r}
+36/(18+36)
+```
+
+
+```{r}
+t1 = table(train$violator,predictions > .2)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+
+```{r}
+t1 = table(train$violator,predictions > 0.3)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+```{r}
+t1 = table(train$violator,predictions > 0.4)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+
+```{r}
+t1 = table(train$violator,predictions > 0.5)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```

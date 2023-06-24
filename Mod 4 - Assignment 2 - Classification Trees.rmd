@@ -1,0 +1,177 @@
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(rpart) #for classification trees
+library(rpart.plot) #plotting trees
+library(RColorBrewer) #better visualization of classification trees
+library(rattle) #better visualization of classification trees
+library(caret) #for easy confusion matrix creation 
+```
+
+```{r}
+library(readr)
+heart <- read_csv("heart_disease-1.csv")
+
+```
+
+```{r}
+heart = heart %>% 
+  mutate(
+    sex = as_factor(Sex),
+    ChestPainType = as_factor(ChestPainType),
+    RestingECG = as_factor(RestingECG),
+    ExerciseAngina = as_factor(ExerciseAngina),
+    ST_Slope = as_factor(ST_Slope),
+    HeartDisease = as_factor(HeartDisease)
+  )
+
+# Recode levels of "HeartDisease"
+heart = heart %>% 
+  mutate(
+    HeartDisease = fct_recode(
+      HeartDisease,
+      "No" = "0",
+      "Yes" = "1"
+    )
+  )
+```
+
+```{r}
+set.seed(12345) 
+split = initial_split(heart, prop = 0.7, strata = HeartDisease) #70% in training
+train = training(split) 
+test = testing(split)
+```
+
+Now that we have the split data, let's build a classification tree. Here we use caret to manage the model building.  
+```{r}
+recipe = recipe(HeartDisease ~ ., train)
+
+tree_model = decision_tree() %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(recipe)
+
+fit = fit(wflow, train)
+```
+
+Let's take a look at our tree (a few ways)  
+```{r}
+#look at the tree's fit
+fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  
+```
+```{r}
+#extract the tree's fit from the fit object
+tree = fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#plot the tree
+rpart.plot(tree)
+```
+```{r}
+#alternative
+fancyRpartPlot(tree) 
+#ST_Slope
+```
+Look at the "rpart" complexity parameter "cp".    
+```{r}
+fit$fit$fit$fit$cptable
+#.0174
+```
+
+Create our folds  
+```{r}
+set.seed(123)
+folds = vfold_cv(train, v = 5)
+```
+
+
+```{r}
+recipe = recipe(HeartDisease ~., train) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+tree_model = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+tree_grid = grid_regular(cost_complexity(),
+                          levels = 25) #try 25 sensible values for cp
+
+wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(recipe)
+
+tree_res = 
+  wflow %>% 
+  tune_grid(
+    resamples = folds,
+    grid = tree_grid
+    )
+
+tree_res
+```
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) 
+```
+```{r}
+best_tree = tree_res %>%
+  select_best("accuracy")
+
+best_tree
+```
+
+```{r}
+final_wf = 
+  wflow %>% 
+  finalize_workflow(best_tree)
+```
+
+```{r}
+final_fit = fit(final_wf, train)
+
+tree = final_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+fancyRpartPlot(tree, tweak = 1.5) 
+
+```
+
+```{r}
+final_fit$fit$fit$fit$cptable
+#.0074
+```
+
+Predictions on training set  
+```{r}
+treepred = predict(final_fit, train, type = "class")
+head(treepred)
+```
+
+Caret confusion matrix and accuracy, etc. calcs  
+```{r}
+confusionMatrix(treepred$.pred_class,train$HeartDisease,positive="Yes") #predictions first then actual
+```
+redictions on testing set  
+```{r}
+treepred_test = predict(final_fit, test, type = "class")
+head(treepred_test)
+```
+
+Caret confusion matrix and accuracy, etc. calcs  
+```{r}
+confusionMatrix(treepred_test$.pred_class,test$HeartDisease,positive="Yes") #predictions first then actual
+```
